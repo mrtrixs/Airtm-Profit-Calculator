@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Airtm Profit Calculator (Add + Withdraw)</title>
+  <style>
+    :root { --bg:#f6f7f9; --card:#fff; --text:#1b1f24; --muted:#65707c; --border:#e3e7ee; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px;}
+    .wrap{max-width:980px;margin:0 auto;}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px;}
+    @media (min-width: 980px){ .grid{grid-template-columns:1.05fr .95fr;} }
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 1px 6px rgba(0,0,0,.04);}
+    h1{margin:0 0 6px;font-size:20px;}
+    h2{margin:0 0 10px;font-size:16px;}
+    .sub{color:var(--muted);font-size:13px;margin:0 0 10px;}
+    label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px;}
+    input,select{width:100%;padding:10px 11px;border:1px solid var(--border);border-radius:12px;font-size:14px;background:#fff;box-sizing:border-box;}
+    input:disabled, select:disabled{background:#f3f5f8;color:#66727f;}
+    .row{display:grid;grid-template-columns:1fr;gap:10px;}
+    @media (min-width: 700px){ .row.two{grid-template-columns:1fr 1fr;} .row.three{grid-template-columns:1fr 1fr 1fr;} .row.four{grid-template-columns:1fr 1fr 1fr 1fr;} }
+    .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;}
+    button{border:1px solid var(--border);background:#fff;padding:10px 12px;border-radius:12px;cursor:pointer;font-size:14px;}
+    button.primary{background:#1f6feb;color:#fff;border-color:#1f6feb;}
+    button:disabled{opacity:.55;cursor:not-allowed;}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted);background:#fff;}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}
+    .kvs{display:grid;grid-template-columns:1fr auto;gap:8px 10px;font-size:13px;margin-top:8px;}
+    .kvs div{padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:#fafbfc;}
+    .kvs div:nth-child(2n){text-align:right;}
+    .good{color:#0a7b34;}
+    .bad{color:#b42318;}
+    .warn{color:#8a4b00;}
+    .small{font-size:12px;color:var(--muted);line-height:1.45;}
+    .seg{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 6px;}
+    .seg input{display:none;}
+    .seg label{margin:0;color:var(--text);font-size:13px;}
+    .seg .opt{padding:8px 10px;border:1px solid var(--border);border-radius:999px;cursor:pointer;background:#fff;}
+    .seg input:checked + .opt{border-color:#1f6feb;box-shadow:0 0 0 3px rgba(31,111,235,.15);}
+    .hr{height:1px;background:var(--border);margin:12px 0;}
+    .noteBox{padding:10px 12px;border:1px dashed var(--border);border-radius:12px;background:#fbfcfe;color:var(--muted);font-size:12px;line-height:1.45}
+    .err{color:#b42318;}
+    .ok{color:#0a7b34;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Airtm Profit Calculator</h1>
+    <p class="sub">Checks if an <b>Add</b> or <b>Withdraw</b> offer beats a live FX baseline. (USDC is treated as USD.)</p>
+
+    <div class="grid">
+      <!-- Left: Inputs -->
+      <div class="card">
+        <h2>1) FX baseline</h2>
+        <p class="small">
+          If “Update FX rates” fails on iPhone, switch FX source to <b>Manual</b> and paste your rates (e.g., from Wise/Google).
+        </p>
+
+        <div class="row two">
+          <div>
+            <label>FX source</label>
+            <select id="fxSource" onchange="onFxSourceChanged()">
+              <option value="LIVE">Live (open.er-api.com)</option>
+              <option value="MANUAL">Manual (you type the rates)</option>
+            </select>
+          </div>
+          <div>
+            <label>Status</label>
+            <div class="noteBox">
+              <span id="fxStatus" class="mono">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="btnRefreshRates" onclick="refreshRates()">Update FX rates</button>
+          <span class="pill">Last update: <span class="mono" id="ratesUpdated">—</span></span>
+        </div>
+
+        <div class="row three" style="margin-top:10px;">
+          <div>
+            <label>USD → EUR</label>
+            <input id="rate_USD_EUR" class="mono" inputmode="decimal" />
+          </div>
+          <div>
+            <label>USD → GBP</label>
+            <input id="rate_USD_GBP" class="mono" inputmode="decimal" />
+          </div>
+          <div>
+            <label>EUR → GBP (auto)</label>
+            <input id="rate_EUR_GBP" class="mono" disabled />
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <h2>2) Trade type</h2>
+        <div class="seg" role="tablist" aria-label="Trade type">
+          <input type="radio" name="tradeType" id="tt_add" value="ADD" checked onchange="renderMode()" />
+          <label for="tt_add" class="opt">Add (fiat → USDC)</label>
+
+          <input type="radio" name="tradeType" id="tt_withdraw" value="WITHDRAW" onchange="renderMode()" />
+          <label for="tt_withdraw" class="opt">Withdraw (USDC → fiat)</label>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label>Profit currency (your base)</label>
+            <select id="baseCurrency" onchange="recalc()">
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <div>
+            <label>Extra costs (in base)</label>
+            <input id="extraCostsBase" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1.50" oninput="recalc()"/>
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label>Percent fee (optional)</label>
+            <input id="pctFee" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 0.5 for 0.5%" oninput="recalc()"/>
+          </div>
+          <div>
+            <label>Fee applies to</label>
+            <select id="feeAppliesTo" onchange="recalc()">
+              <option value="PAID">Fiat paid / USDC sent</option>
+              <option value="RECEIVED">Fiat received / USDC received</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div id="mode_add">
+          <h2>3) Add inputs</h2>
+
+          <div class="row two">
+            <div>
+              <label>Fiat you pay</label>
+              <input id="add_fiatPaid" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1000" oninput="recalc()"/>
+            </div>
+            <div>
+              <label>Currency you pay</label>
+              <select id="add_fiatCcy" onchange="recalc()">
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row two">
+            <div>
+              <label>USDC you receive</label>
+              <input id="add_usdcReceived" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1050" oninput="recalc()"/>
+            </div>
+            <div>
+              <label>Sell price for USDC</label>
+              <select id="add_sellPriceMode" onchange="recalc()">
+                <option value="MARKET">Use FX baseline (USDC≈USD)</option>
+                <option value="CUSTOM">Custom sell price (base per USDC)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row two" id="add_customSellRow" style="display:none;">
+            <div>
+              <label>Custom sell price (base per 1 USDC)</label>
+              <input id="add_customSell" type="number" step="0.0001" inputmode="decimal" placeholder="e.g. 0.93 (EUR per USDC)" oninput="recalc()"/>
+            </div>
+            <div>
+              <label>What is this?</label>
+              <input disabled value="Use if you know your typical withdraw sell rate." />
+            </div>
+          </div>
+        </div>
+
+        <div id="mode_withdraw" style="display:none;">
+          <h2>3) Withdraw inputs</h2>
+
+          <div class="row two">
+            <div>
+              <label>USDC you send</label>
+              <input id="wd_usdcSent" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 1000" oninput="recalc()"/>
+            </div>
+            <div>
+              <label>Fiat you receive</label>
+              <input id="wd_fiatReceived" type="number" step="0.01" inputmode="decimal" placeholder="e.g. 970" oninput="recalc()"/>
+            </div>
+          </div>
+
+          <div class="row two">
+            <div>
+              <label>Currency you receive</label>
+              <select id="wd_fiatCcy" onchange="recalc()">
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div>
+              <label>Assumption</label>
+              <input disabled value="USDC treated as USD; baseline uses FX rate." />
+            </div>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" onclick="recalc()">Calculate</button>
+          <button onclick="resetAll()">Reset</button>
+        </div>
+
+        <div class="noteBox" style="margin-top:10px;">
+          <b>If FX update still doesn’t work:</b> set FX source to <b>Manual</b> and type USD→EUR and USD→GBP (EUR→GBP will auto-calc).
+        </div>
+      </div>
+
+      <!-- Right: Outputs -->
+      <div class="card">
+        <h2>Result</h2>
+        <div class="kvs" id="resultsKvs">
+          <div>Profit (base)</div><div class="mono">—</div>
+          <div>Margin</div><div class="mono">—</div>
+          <div>Baseline valuation (base)</div><div class="mono">—</div>
+          <div>Implied rate</div><div class="mono">—</div>
+          <div>Breakeven</div><div class="mono">—</div>
+        </div>
+
+        <div class="hr"></div>
+
+        <h2>How it’s calculated</h2>
+        <p class="small" id="explain">—</p>
+
+        <div class="hr"></div>
+
+        <h2>Quick iPhone tip</h2>
+        <p class="small">
+          For best results on iPhone: host this file (GitHub Pages / Netlify) or use Manual FX. When a page is opened as a local file, browsers sometimes block API calls due to CORS.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------
+    // FX storage + utilities
+    // -----------------------
+    const LS_KEY = "airtm_profit_calc_rates_v2";
+    const state = {
+      fxSource: "LIVE",
+      // store USD base rates only (USD->EUR, USD->GBP)
+      usdBase: { EUR: null, GBP: null, USD: 1 },
+      updatedAt: null,
+      lastError: null
+    };
+
+    function fmt(n, dp=2) {
+      if (n === null || n === undefined || Number.isNaN(n)) return "—";
+      return Number(n).toFixed(dp);
+    }
+    function fmtSigned(n, dp=2) {
+      if (n === null || n === undefined || Number.isNaN(n)) return "—";
+      const v = Number(n);
+      const sign = v > 0 ? "+" : "";
+      return sign + v.toFixed(dp);
+    }
+
+    function setFxStatusOk(msg){ const el=document.getElementById("fxStatus"); el.textContent=msg; el.className="mono ok"; }
+    function setFxStatusErr(msg){ const el=document.getElementById("fxStatus"); el.textContent=msg; el.className="mono err"; }
+    function setFxStatusWarn(msg){ const el=document.getElementById("fxStatus"); el.textContent=msg; el.className="mono warn"; }
+
+    function getTradeType() {
+      return document.querySelector('input[name="tradeType"]:checked')?.value || "ADD";
+    }
+
+    function getRate(from, to) {
+      if (!from || !to) return null;
+      if (from === to) return 1;
+
+      // We only store USD-base. Derive:
+      const u = state.usdBase;
+      const usdTo = u?.[to];
+      const usdFrom = u?.[from];
+
+      // direct USD->X
+      if (from === "USD") return usdTo ?? null;
+      // X->USD is 1/(USD->X)
+      if (to === "USD") return (usdFrom && isFinite(usdFrom)) ? (1 / usdFrom) : null;
+
+      // cross: from->to = (USD->to) / (USD->from)
+      if (usdTo && usdFrom && isFinite(usdTo) && isFinite(usdFrom) && usdFrom !== 0) {
+        return usdTo / usdFrom;
+      }
+      return null;
+    }
+
+    function convert(amount, from, to) {
+      const r = getRate(from, to);
+      if (!r || !isFinite(r)) return null;
+      return amount * r;
+    }
+
+    function loadCachedRates() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return;
+        const obj = JSON.parse(raw);
+        if (obj?.usdBase) state.usdBase = obj.usdBase;
+        if (obj?.updatedAt) state.updatedAt = obj.updatedAt;
+        if (obj?.fxSource) state.fxSource = obj.fxSource;
+      } catch (e) {}
+    }
+
+    function saveCachedRates() {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+          usdBase: state.usdBase,
+          updatedAt: state.updatedAt,
+          fxSource: state.fxSource
+        }));
+      } catch (e) {}
+    }
+
+    function paintRates() {
+      const usdEur = getRate("USD","EUR");
+      const usdGbp = getRate("USD","GBP");
+      const eurGbp = getRate("EUR","GBP");
+
+      const iUsdEur = document.getElementById("rate_USD_EUR");
+      const iUsdGbp = document.getElementById("rate_USD_GBP");
+
+      // Enable manual editing only in MANUAL mode
+      const manual = (state.fxSource === "MANUAL");
+      iUsdEur.disabled = !manual;
+      iUsdGbp.disabled = !manual;
+
+      // Write values
+      iUsdEur.value = usdEur ? usdEur.toFixed(6) : "";
+      iUsdGbp.value = usdGbp ? usdGbp.toFixed(6) : "";
+      document.getElementById("rate_EUR_GBP").value = eurGbp ? eurGbp.toFixed(6) : "—";
+
+      document.getElementById("ratesUpdated").textContent =
+        state.updatedAt ? new Date(state.updatedAt).toLocaleString() : "—";
+
+      if (state.fxSource === "MANUAL") {
+        setFxStatusWarn("Manual FX mode (type USD→EUR and USD→GBP).");
+      } else {
+        if (usdEur && usdGbp) setFxStatusOk("Live FX ready.");
+        else setFxStatusWarn("Live FX not loaded yet.");
+      }
+    }
+
+    function onFxSourceChanged(){
+      state.fxSource = document.getElementById("fxSource").value;
+      saveCachedRates();
+      paintRates();
+      recalc();
+    }
+
+    function readManualInputsIntoState(){
+      const usdEur = parseFloat(document.getElementById("rate_USD_EUR").value);
+      const usdGbp = parseFloat(document.getElementById("rate_USD_GBP").value);
+      if (isFinite(usdEur) && usdEur > 0) state.usdBase.EUR = usdEur;
+      if (isFinite(usdGbp) && usdGbp > 0) state.usdBase.GBP = usdGbp;
+      state.updatedAt = Date.now();
+      saveCachedRates();
+      paintRates();
+      recalc();
+    }
+
+    // Keep manual inputs live-updated
+    document.addEventListener("input", (e)=>{
+      if (state.fxSource !== "MANUAL") return;
+      if (e.target?.id === "rate_USD_EUR" || e.target?.id === "rate_USD_GBP") {
+        readManualInputsIntoState();
+      }
+    });
+
+    async function refreshRates() {
+      const btn = document.getElementById("btnRefreshRates");
+      btn.disabled = true;
+      btn.textContent = "Updating…";
+      state.lastError = null;
+
+      try {
+        // Open-access endpoint documented by ExchangeRate-API:
+        // https://open.er-api.com/v6/latest/USD
+        const res = await fetch("https://open.er-api.com/v6/latest/USD", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+
+        const r = data?.rates || data?.conversion_rates; // support both shapes
+        const eur = r?.EUR;
+        const gbp = r?.GBP;
+
+        if (!eur || !gbp) throw new Error("Missing EUR/GBP in response");
+
+        state.usdBase.EUR = eur;
+        state.usdBase.GBP = gbp;
+
+        // Prefer API-provided timestamp if available
+        const ts = (data?.time_last_update_unix || data?.time_last_update_utc) ? data.time_last_update_unix * 1000 : Date.now();
+        state.updatedAt = (isFinite(ts) ? ts : Date.now());
+
+        state.fxSource = "LIVE";
+        document.getElementById("fxSource").value = "LIVE";
+
+        saveCachedRates();
+        setFxStatusOk("Live FX updated successfully.");
+      } catch (e) {
+        state.lastError = String(e?.message || e);
+        setFxStatusErr("FX update failed (CORS/network). Switch to Manual if needed.");
+        console.warn("FX update failed:", e);
+      } finally {
+        paintRates();
+        recalc();
+        btn.disabled = false;
+        btn.textContent = "Update FX rates";
+      }
+    }
+
+    // -----------------------
+    // UI modes + calculations
+    // -----------------------
+    function renderMode() {
+      const tt = getTradeType();
+      document.getElementById("mode_add").style.display = (tt === "ADD") ? "block" : "none";
+      document.getElementById("mode_withdraw").style.display = (tt === "WITHDRAW") ? "block" : "none";
+      recalc();
+    }
+
+    function resetAll() {
+      document.getElementById("baseCurrency").value = "EUR";
+      document.getElementById("extraCostsBase").value = "";
+      document.getElementById("pctFee").value = "";
+      document.getElementById("feeAppliesTo").value = "PAID";
+
+      document.getElementById("add_fiatPaid").value = "";
+      document.getElementById("add_fiatCcy").value = "EUR";
+      document.getElementById("add_usdcReceived").value = "";
+      document.getElementById("add_sellPriceMode").value = "MARKET";
+      document.getElementById("add_customSell").value = "";
+
+      document.getElementById("wd_usdcSent").value = "";
+      document.getElementById("wd_fiatReceived").value = "";
+      document.getElementById("wd_fiatCcy").value = "EUR";
+
+      recalc();
+    }
+
+    function setResultRows({profit, margin, baselineVal, impliedRate, breakeven, noteClass}) {
+      const kvs = document.getElementById("resultsKvs").children;
+      kvs[1].textContent = profit;  kvs[1].className = "mono " + (noteClass || "");
+      kvs[3].textContent = margin;  kvs[3].className = "mono " + (noteClass || "");
+      kvs[5].textContent = baselineVal; kvs[5].className = "mono";
+      kvs[7].textContent = impliedRate; kvs[7].className = "mono";
+      kvs[9].textContent = breakeven; kvs[9].className = "mono";
+    }
+
+    function recalc() {
+      const base = document.getElementById("baseCurrency").value;
+      const extraCosts = parseFloat(document.getElementById("extraCostsBase").value || "0") || 0;
+      const pctFee = parseFloat(document.getElementById("pctFee").value || "0") || 0;
+      const feeAppliesTo = document.getElementById("feeAppliesTo").value;
+      const tt = getTradeType();
+
+      const sellMode = document.getElementById("add_sellPriceMode")?.value;
+      document.getElementById("add_customSellRow").style.display = (sellMode === "CUSTOM") ? "grid" : "none";
+
+      const basePerUSDC_market = getRate("USD", base); // USDC≈USD
+      if (!basePerUSDC_market) {
+        setResultRows({profit:"—", margin:"—", baselineVal:"—", impliedRate:"—", breakeven:"—", noteClass:"warn"});
+        document.getElementById("explain").textContent =
+          (state.lastError ? ("FX unavailable: " + state.lastError) : "FX not loaded yet. Click “Update FX rates” or switch to Manual FX.");
+        return;
+      }
+
+      if (tt === "ADD") {
+        const fiatPaid = parseFloat(document.getElementById("add_fiatPaid").value);
+        const fiatCcy = document.getElementById("add_fiatCcy").value;
+        const usdcReceived = parseFloat(document.getElementById("add_usdcReceived").value);
+
+        if (!isFinite(fiatPaid) || fiatPaid <= 0 || !isFinite(usdcReceived) || usdcReceived <= 0) {
+          setResultRows({profit:"—", margin:"—", baselineVal:"—", impliedRate:"—", breakeven:"—", noteClass:"warn"});
+          document.getElementById("explain").textContent = "Enter Fiat paid and USDC received to calculate.";
+          return;
+        }
+
+        const paidInBase = convert(fiatPaid, fiatCcy, base);
+        if (!paidInBase) {
+          setResultRows({profit:"—", margin:"—", baselineVal:"—", impliedRate:"—", breakeven:"—", noteClass:"warn"});
+          document.getElementById("explain").textContent = "Missing FX path to convert your paid currency into your base currency.";
+          return;
+        }
+
+        const feePaidBase = (feeAppliesTo === "PAID") ? (paidInBase * (pctFee/100)) : 0;
+        const usdcAfterFee = (feeAppliesTo === "RECEIVED") ? (usdcReceived * (1 - pctFee/100)) : usdcReceived;
+
+        let basePerUSDC = basePerUSDC_market;
+        if (sellMode === "CUSTOM") {
+          const custom = parseFloat(document.getElementById("add_customSell").value);
+          if (isFinite(custom) && custom > 0) basePerUSDC = custom;
+        }
+
+        const baselineValueBase = usdcAfterFee * basePerUSDC;
+        const totalCostBase = paidInBase + feePaidBase + extraCosts;
+
+        const profitBase = baselineValueBase - totalCostBase;
+        const marginPct = (profitBase / totalCostBase) * 100;
+        const impliedBasePerUSDC = totalCostBase / usdcAfterFee;
+        const breakevenPrice = totalCostBase / usdcAfterFee;
+
+        const cls = profitBase > 0 ? "good" : (profitBase < 0 ? "bad" : "");
+        setResultRows({
+          profit: `${fmtSigned(profitBase, 2)} ${base}`,
+          margin: `${fmtSigned(marginPct, 2)}%`,
+          baselineVal: `${fmt(baselineValueBase, 2)} ${base}`,
+          impliedRate: `${fmt(impliedBasePerUSDC, 6)} ${base}/USDC`,
+          breakeven: `${fmt(breakevenPrice, 6)} ${base}/USDC`,
+          noteClass: cls
+        });
+
+        document.getElementById("explain").innerHTML =
+          `Add: pay <span class="mono">${fiatPaid} ${fiatCcy}</span> and receive <span class="mono">${usdcReceived} USDC</span>.<br/>
+           Convert paid → <span class="mono">${base}</span>, apply fees/costs, then value USDC using baseline (or custom) price.<br/>
+           Profit = (USDC × sell price) − (paid in base + fees + extra costs).`;
+        return;
+      }
+
+      // WITHDRAW
+      const usdcSent = parseFloat(document.getElementById("wd_usdcSent").value);
+      const fiatReceived = parseFloat(document.getElementById("wd_fiatReceived").value);
+      const fiatCcy = document.getElementById("wd_fiatCcy").value;
+
+      if (!isFinite(usdcSent) || usdcSent <= 0 || !isFinite(fiatReceived) || fiatReceived <= 0) {
+        setResultRows({profit:"—", margin:"—", baselineVal:"—", impliedRate:"—", breakeven:"—", noteClass:"warn"});
+        document.getElementById("explain").textContent = "Enter USDC sent and Fiat received to calculate.";
+        return;
+      }
+
+      const receivedInBase = convert(fiatReceived, fiatCcy, base);
+      if (!receivedInBase) {
+        setResultRows({profit:"—", margin:"—", baselineVal:"—", impliedRate:"—", breakeven:"—", noteClass:"warn"});
+        document.getElementById("explain").textContent = "Missing FX path to convert received currency into your base currency.";
+        return;
+      }
+
+      const feeOnSentUSDC = (feeAppliesTo === "PAID") ? (usdcSent * (pctFee/100)) : 0;
+      const feeOnReceivedBase = (feeAppliesTo === "RECEIVED") ? (receivedInBase * (pctFee/100)) : 0;
+
+      const baselineCostBase = (usdcSent + feeOnSentUSDC) * basePerUSDC_market;
+      const netReceivedBase = receivedInBase - feeOnReceivedBase;
+
+      const profitBase = netReceivedBase - baselineCostBase - extraCosts;
+      const marginPct = (profitBase / baselineCostBase) * 100;
+      const impliedBasePerUSDC = netReceivedBase / usdcSent;
+      const breakevenBaseReceived = baselineCostBase + extraCosts;
+
+      const cls = profitBase > 0 ? "good" : (profitBase < 0 ? "bad" : "");
+      setResultRows({
+        profit: `${fmtSigned(profitBase, 2)} ${base}`,
+        margin: `${fmtSigned(marginPct, 2)}%`,
+        baselineVal: `${fmt(baselineCostBase, 2)} ${base}`,
+        impliedRate: `${fmt(impliedBasePerUSDC, 6)} ${base}/USDC`,
+        breakeven: `${fmt(breakevenBaseReceived, 2)} ${base} received`,
+        noteClass: cls
+      });
+
+      document.getElementById("explain").innerHTML =
+        `Withdraw: send <span class="mono">${usdcSent} USDC</span> and receive <span class="mono">${fiatReceived} ${fiatCcy}</span>.<br/>
+         Convert received → <span class="mono">${base}</span>, apply fees/costs, compare to baseline value of USDC (USDC≈USD).<br/>
+         Profit = (received in base − fees) − (USDC sent × FX baseline) − extra costs.`;
+    }
+
+    function init() {
+      loadCachedRates();
+      document.getElementById("fxSource").value = state.fxSource || "LIVE";
+      paintRates();
+      renderMode();
+
+      // Auto refresh only if live mode and missing rates
+      if (state.fxSource === "LIVE" && (!state.usdBase.EUR || !state.usdBase.GBP)) refreshRates();
+      else recalc();
+    }
+
+    init();
+  </script>
+</body>
+</html>
